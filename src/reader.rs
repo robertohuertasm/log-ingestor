@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use tokio_stream::StreamExt;
 use tracing::instrument;
 
@@ -7,6 +7,57 @@ pub type AsyncWriter = dyn tokio::io::AsyncWrite + Send + Sync + Unpin;
 
 // "remotehost","rfc931","authuser","date","request","status","bytes"
 // "10.0.0.2","-","apache",1549573860,"GET /api/user HTTP/1.0",200,1234
+
+/// Represents a Log Request
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LogRequest {
+    /// Verb of the request.
+    pub verb: String,
+    /// Path of the request.
+    pub path: String,
+    /// First part of the path.
+    pub section: String,
+    /// Protocol of the request.
+    pub protocol: String,
+}
+
+impl LogRequest {
+    fn from_str(line: &str) -> anyhow::Result<Self> {
+        let mut parts = line.split_whitespace();
+
+        let verb = parts
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("Invalid line, no verb: {}", line))?;
+        let path = parts
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("Invalid line, no path: {}", line))?;
+        let protocol = parts
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("Invalid line, no protocol: {}", line))?;
+
+        let section = path
+            .chars()
+            .enumerate()
+            .take_while(|(i, c)| *i == 0 || *c != '/')
+            .map(|(_, c)| c)
+            .collect::<String>();
+
+        Ok(Self {
+            verb: verb.to_string(),
+            path: path.to_string(),
+            section: section.to_string(),
+            protocol: protocol.to_string(),
+        })
+    }
+}
+
+fn deserialize_log_request<'de, D>(deserializer: D) -> Result<LogRequest, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let buf = String::deserialize(deserializer)?;
+    LogRequest::from_str(&buf).map_err(serde::de::Error::custom)
+}
 
 /// Represents an Http Log.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -22,7 +73,8 @@ pub struct HttpLog {
     /// Epoch time of the log.
     pub date: u64,
     /// The request: verb, path, protocol.
-    pub request: String,
+    #[serde(deserialize_with = "deserialize_log_request")]
+    pub request: LogRequest,
     /// The status code.
     pub status: u16,
     /// The amount of bytes.
