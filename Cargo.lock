@@ -280,6 +280,7 @@ dependencies = [
  "csv-async",
  "dotenv",
  "futures",
+ "pin-project",
  "rust_decimal",
  "serde",
  "structopt",

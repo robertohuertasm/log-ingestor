@@ -26,3 +26,4 @@ dotenv = "0.15"
 time = {version  = "0.3.7", features = ["std", "formatting"]}
 # errors
 anyhow = "1.0"
+pin-project = "1.0.10"
