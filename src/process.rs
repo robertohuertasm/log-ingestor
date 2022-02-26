@@ -3,7 +3,6 @@ use futures::StreamExt;
 use tracing::instrument;
 
 /// Processes all the logs coming from an async reader
-/// and writes the results to an async writer.
 #[instrument(skip(reader, _writer))]
 pub async fn process_logs(
     reader: &mut AsyncReader,
@@ -17,7 +16,13 @@ pub async fn process_logs(
                 // if let Err(e) = engine.process_transaction(log).await {
                 //     tracing::error!(error=?e, "Error processing transaction: {}", e);
                 // }
-                tracing::info!("Processed log: {:?}", log);
+                tracing::info!(
+                    "Processed log: {:?} - {:?}",
+                    time::OffsetDateTime::from_unix_timestamp(log.date as i64)
+                        .unwrap()
+                        .format(&time::format_description::well_known::Rfc3339),
+                    log
+                );
             }
             Err(e) => tracing::error!("CSV deserialization error: {}", e),
         }
