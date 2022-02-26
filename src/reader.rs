@@ -4,10 +4,6 @@ use tracing::instrument;
 
 pub type AsyncReader = dyn tokio::io::AsyncRead + Send + Sync + Unpin;
 pub type AsyncWriter = dyn tokio::io::AsyncWrite + Send + Sync + Unpin;
-
-// "remotehost","rfc931","authuser","date","request","status","bytes"
-// "10.0.0.2","-","apache",1549573860,"GET /api/user HTTP/1.0",200,1234
-
 /// Represents a Log Request
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct LogRequest {

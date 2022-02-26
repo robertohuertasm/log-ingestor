@@ -23,7 +23,7 @@ async fn main() -> anyhow::Result<()> {
     dotenv::dotenv().ok();
     set_up_tracing();
     tracing::info!("Starting the Payments Engine CLI");
-
+    // supporting both a path or stdin as input
     let mut reader: Box<AsyncReader> = if let Some(path) = cli.path {
         let file_path = current_dir()?.join(path);
         Box::new(tokio::fs::File::open(file_path).await?)
