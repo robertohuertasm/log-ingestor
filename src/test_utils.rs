@@ -14,7 +14,6 @@ where
     ) -> impl FnMut(T) -> bool + 'a {
         move |curr| {
             if let Some(Ordering::Greater) | None = compare(&last, &curr) {
-                println!("{:?}\nv\n{:?}", last, curr);
                 return false;
             }
             *last = curr;
