@@ -116,7 +116,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn it_buffers_logs_and_returns_them_in_order() {
+    async fn it_buffers_logs_and_returns_them_in_order_from_memory() {
         let mut input = r#"
 "remotehost","rfc931","authuser","date","request","status","bytes"
 "10.0.0.2","-","apache",1549573860,"GET /api/user HTTP/1.0",200,1234
