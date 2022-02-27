@@ -87,7 +87,7 @@ where
             // modify the minor date and return
             *this.minor_time_in_buffer = this
                 .times
-                .last()
+                .first()
                 .map(|x| x.date)
                 .unwrap_or_else(|| *this.major_time_in_buffer);
             return Poll::Ready(Some(log));
@@ -105,8 +105,15 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::reader::read_csv_async;
+    use crate::{reader::read_csv_async, test_utils};
     use futures::StreamExt;
+
+    async fn assert_buffered_is_ordered(log_stream: impl Stream<Item = HttpLog>) {
+        let result = log_stream.collect::<Vec<_>>().await;
+        let is_sorted =
+            test_utils::is_sorted_by(result.iter(), |&a, &b| a.date.partial_cmp(&b.date));
+        assert!(is_sorted);
+    }
 
     #[tokio::test]
     async fn it_buffers_logs_and_returns_them_in_order() {
@@ -142,20 +149,15 @@ mod tests {
             .as_bytes();
         let log_stream = read_csv_async(&mut input).await;
         let log_stream = BufferedLogs::new(log_stream, 2);
+        assert_buffered_is_ordered(log_stream).await;
+    }
 
-        let expect = vec![
-            1549573859, 1549573860, 1549573860, 1549573860, 1549573860, 1549573860, 1549573860,
-            1549573860, 1549573860, 1549573860, 1549573860, 1549573861, 1549573861, 1549573861,
-            1549573861, 1549573861, 1549573861, 1549573861, 1549573862, 1549573862, 1549573862,
-            1549573862, 1549573862, 1549573862, 1549573862, 1549573863, 1549573863,
-        ];
-
-        let result = log_stream.map(|log| log.date).collect::<Vec<_>>().await;
-
-        assert_eq!(result, expect);
-
-        // while let Some(log) = log_stream.next().await {
-        //     println!("{:?}", log.date);
-        // }
+    #[tokio::test]
+    async fn it_buffers_logs_and_returns_them_in_order_from_file() {
+        let file_path = std::env::current_dir().unwrap().join("sample.csv");
+        let mut input = tokio::fs::File::open(file_path).await.unwrap();
+        let log_stream = read_csv_async(&mut input).await;
+        let log_stream = BufferedLogs::new(log_stream, 2);
+        assert_buffered_is_ordered(log_stream).await;
     }
 }

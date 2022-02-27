@@ -1,6 +1,8 @@
-mod buffer;
+mod buffered_logs;
 mod process;
 mod reader;
+#[cfg(test)]
+mod test_utils;
 
 use crate::reader::AsyncReader;
 use std::env::current_dir;

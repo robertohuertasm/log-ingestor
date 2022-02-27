@@ -1,4 +1,7 @@
-use crate::reader::{read_csv_async, AsyncReader, AsyncWriter};
+use crate::{
+    buffered_logs::BufferedLogs,
+    reader::{read_csv_async, AsyncReader, AsyncWriter},
+};
 use futures::StreamExt;
 use tracing::instrument;
 
@@ -8,25 +11,18 @@ pub async fn process_logs(
     reader: &mut AsyncReader,
     _writer: &mut AsyncWriter,
 ) -> anyhow::Result<()> {
-    let mut log_stream = read_csv_async(reader).await;
-
+    let log_stream = read_csv_async(reader).await;
+    let mut log_stream = BufferedLogs::new(log_stream, 2);
     while let Some(log) = log_stream.next().await {
-        match log {
-            Ok(log) => {
-                // if let Err(e) = engine.process_transaction(log).await {
-                //     tracing::error!(error=?e, "Error processing transaction: {}", e);
-                // }
-                tracing::info!(
-                    "Processed log: {:?} - {:?}",
-                    time::OffsetDateTime::from_unix_timestamp(log.date as i64)
-                        .unwrap()
-                        .format(&time::format_description::well_known::Rfc3339),
-                    log
-                );
-            }
-            Err(e) => tracing::error!("CSV deserialization error: {}", e),
-        }
+        tracing::info!(
+            "Processed log: {:?} - {:?}",
+            time::OffsetDateTime::from_unix_timestamp(log.date as i64)
+                .unwrap()
+                .format(&time::format_description::well_known::Rfc3339),
+            log
+        );
     }
+    tracing::info!("Processing done!");
 
     // let report = engine.report().await?;
     // write_csv_async(writer, report).await?;
