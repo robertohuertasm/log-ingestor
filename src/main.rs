@@ -5,7 +5,10 @@ mod reader;
 #[cfg(test)]
 mod test_utils;
 
-use crate::reader::AsyncReader;
+use crate::{
+    processors::{Alerts, Processor, Stats},
+    reader::AsyncReader,
+};
 use std::env::current_dir;
 use structopt::StructOpt;
 
@@ -27,6 +30,7 @@ async fn main() -> anyhow::Result<()> {
     dotenv::dotenv().ok();
     set_up_tracing();
     tracing::info!("Starting the Log Ingestor CLI");
+
     // supporting both a path or stdin as input
     let mut reader: Box<AsyncReader> = if let Some(path) = cli.path {
         let file_path = current_dir()?.join(path);
@@ -37,7 +41,9 @@ async fn main() -> anyhow::Result<()> {
 
     let mut writer = tokio::io::stdout();
 
-    process::process_logs(&mut reader, &mut writer).await?;
+    let processors: Vec<Box<dyn Processor>> = vec![Box::new(Alerts::new(10)), Box::new(Stats {})];
+
+    process::process_logs(&mut reader, &mut writer, processors).await?;
     Ok(())
 }
 

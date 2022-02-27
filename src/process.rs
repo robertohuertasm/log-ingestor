@@ -1,34 +1,44 @@
+use std::sync::Arc;
+
 use crate::{
     buffered_logs::BufferedLogs,
-    reader::{read_csv_async, AsyncReader, AsyncWriter, HttpLog},
+    processors::Processor,
+    reader::{read_csv_async, AsyncReader, AsyncWriter},
 };
 use futures::StreamExt;
+use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 use tracing::instrument;
 
 /// Processes all the logs coming from an async reader
-#[instrument(skip(reader, _writer))]
-pub async fn process_logs(
-    reader: &mut AsyncReader,
-    _writer: &mut AsyncWriter,
+#[instrument(skip(reader, _writer, processors))]
+pub async fn process_logs<'a>(
+    reader: &'a mut AsyncReader,
+    _writer: &'a mut AsyncWriter,
+    mut processors: Vec<Box<dyn Processor>>,
 ) -> anyhow::Result<()> {
+    // reading and buffering in order to order the logs
+    // we'll use a 2 secs buffer
     let log_stream = read_csv_async(reader).await;
     let mut log_stream = BufferedLogs::new(log_stream, 2);
 
-    // TODO: SEND  TO STATS AND ALERTS
+    // sending logs to all processors in a parallel way
     while let Some(log) = log_stream.next().await {
-        tracing::info!(
-            "Processed log: {:?} - {:?}",
-            time::OffsetDateTime::from_unix_timestamp(log.time as i64)
-                .unwrap()
-                .format(&time::format_description::well_known::Rfc3339),
-            log
-        );
+        let log = Arc::new(log);
+        processors.par_iter_mut().for_each(|processor| {
+            if let Err(e) = processor.process(&log.clone()) {
+                tracing::error!("Error processing log: {:?} - {:?}", log, e);
+            }
+        });
+
+        // tracing::info!(
+        //     "Processed log: {:?} - {:?}",
+        //     time::OffsetDateTime::from_unix_timestamp(log.time as i64)
+        //         .unwrap()
+        //         .format(&time::format_description::well_known::Rfc3339),
+        //     log
+        // );
     }
     tracing::info!("Processing done!");
-
-    // let report = engine.report().await?;
-    // write_csv_async(writer, report).await?;
-
     Ok(())
 }
 
