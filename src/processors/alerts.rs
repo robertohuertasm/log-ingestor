@@ -62,15 +62,15 @@ impl Processor for Alerts {
             if is_above_threshold && !self.is_alert_set {
                 self.is_alert_set = true;
                 println!(
-                        "ALERT AT [{}]: avg requests for last 120 secs is greater than the threshold: {} reqs/sec",
-                        log.time, avg_req_per_sec
-                    );
+                    "High traffic generated an alert - hits = {}, triggered at {}",
+                    avg_req_per_sec, log.time
+                );
             } else if self.is_alert_set && !is_above_threshold {
                 self.is_alert_set = false;
                 println!(
-                        "ALERT CLEARED AT [{}]: avg requests per 120 secs is less than the threshold: {} reqs/sec (alert cleared)",
-                        log.time, avg_req_per_sec
-                    );
+                    "Normal traffic recovered - hits = {}, recovered at {}",
+                    avg_req_per_sec, log.time,
+                );
             }
         }
         Ok(())
