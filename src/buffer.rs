@@ -2,84 +2,101 @@ use crate::reader::HttpLog;
 use futures::{Stream, StreamExt};
 use pin_project::pin_project;
 use std::{
-    collections::VecDeque,
-    fmt::{self, Debug},
+    collections::{HashMap, VecDeque},
     pin::Pin,
     task::{Context, Poll},
 };
+
+pub type LogResult = Result<HttpLog, anyhow::Error>;
 
 #[pin_project]
 #[must_use = "streams do nothing unless polled"]
 pub struct BufferedLogs<St>
 where
-    St: Stream<Item = Result<HttpLog, anyhow::Error>>,
+    St: Stream<Item = LogResult>,
 {
     #[pin]
     stream: futures::stream::Fuse<St>,
-    // #[pin]
-    buf: VecDeque<Result<HttpLog, anyhow::Error>>,
     seconds: u64,
-}
-
-impl<St> Debug for BufferedLogs<St>
-where
-    St: Stream<Item = Result<HttpLog, anyhow::Error>> + Debug,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("BufferedLogs")
-            .field("stream", &self.stream)
-            .field("buf", &self.buf)
-            .field("seconds", &self.seconds)
-            .finish()
-    }
+    time_map: HashMap<u64, HttpLog>,
+    buf: VecDeque<HttpLog>,
+    times: Vec<HttpLog>,
+    minor_time_in_buffer: u64,
+    major_time_in_buffer: u64,
 }
 
 impl<St> BufferedLogs<St>
 where
-    St: Stream<Item = Result<HttpLog, anyhow::Error>>,
+    St: Stream<Item = LogResult>,
 {
     pub fn new(stream: St, seconds: u64) -> Self {
         Self {
             stream: stream.fuse(),
-            buf: VecDeque::new(),
             seconds,
+            time_map: HashMap::new(),
+            buf: VecDeque::new(),
+            times: Vec::new(),
+            minor_time_in_buffer: 0,
+            major_time_in_buffer: 0,
         }
     }
-
-    // delegate_access_inner!(stream, St, (.));
 }
 
 impl<St> Stream for BufferedLogs<St>
 where
-    St: Stream<Item = Result<HttpLog, anyhow::Error>>,
+    St: Stream<Item = LogResult>,
 {
-    type Item = St::Item;
+    type Item = HttpLog;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let mut this = self.project();
 
-        // First up, try to spawn off as many futures as possible by filling up
-        // our queue of futures.
-        while this.buf.len() < *this.seconds as usize {
-            println!("buffering");
+        while *this.major_time_in_buffer - *this.minor_time_in_buffer <= *this.seconds
+            && !this.stream.is_done()
+        {
             match this.stream.as_mut().poll_next(cx) {
-                Poll::Ready(Some(x)) => this.buf.push_back(x),
+                Poll::Ready(Some(x)) => {
+                    match x {
+                        Ok(log) => {
+                            let current_date = log.date;
+                            if *this.minor_time_in_buffer == 0 && *this.major_time_in_buffer == 0 {
+                                *this.minor_time_in_buffer = current_date;
+                                *this.major_time_in_buffer = current_date;
+                            }
+                            if current_date < *this.minor_time_in_buffer {
+                                *this.minor_time_in_buffer = current_date;
+                            }
+                            if current_date > *this.major_time_in_buffer {
+                                *this.major_time_in_buffer = current_date;
+                            }
+                            // insert and sort
+                            this.times.push(log);
+                            this.times.sort_by(|a, b| b.date.cmp(&a.date))
+                        }
+                        Err(e) => {
+                            // swallowing log parsing errors and log it
+                            tracing::error!("Error buffering logs: {}", e);
+                        }
+                    }
+                }
                 Poll::Ready(None) | Poll::Pending => break,
             }
         }
 
-        // Attempt get the next value from the logs queue
-        if let Some(val) = this.buf.pop_back() {
-            println!("from buffer");
-            return Poll::Ready(Some(val));
+        if let Some(log) = this.times.pop() {
+            // modify the minor date and return
+            *this.minor_time_in_buffer = this
+                .times
+                .last()
+                .map(|x| x.date)
+                .unwrap_or_else(|| *this.major_time_in_buffer);
+            return Poll::Ready(Some(log));
         }
 
         // If more values are still coming from the stream, we're not done yet
         if this.stream.is_done() {
-            println!("done");
             Poll::Ready(None)
         } else {
-            println!("pending");
             Poll::Pending
         }
     }
@@ -92,7 +109,7 @@ mod tests {
     use futures::StreamExt;
 
     #[tokio::test]
-    async fn it_buffers_logs_and_orders_them() {
+    async fn it_buffers_logs_and_returns_them_in_order() {
         let mut input = r#"
 "remotehost","rfc931","authuser","date","request","status","bytes"
 "10.0.0.2","-","apache",1549573860,"GET /api/user HTTP/1.0",200,1234
@@ -124,11 +141,21 @@ mod tests {
 "10.0.0.2","-","apache",1549573863,"GET /report HTTP/1.0",200,1194"#
             .as_bytes();
         let log_stream = read_csv_async(&mut input).await;
+        let log_stream = BufferedLogs::new(log_stream, 2);
 
-        let mut log_stream = BufferedLogs::new(log_stream, 100);
+        let expect = vec![
+            1549573859, 1549573860, 1549573860, 1549573860, 1549573860, 1549573860, 1549573860,
+            1549573860, 1549573860, 1549573860, 1549573860, 1549573861, 1549573861, 1549573861,
+            1549573861, 1549573861, 1549573861, 1549573861, 1549573862, 1549573862, 1549573862,
+            1549573862, 1549573862, 1549573862, 1549573862, 1549573863, 1549573863,
+        ];
 
-        while let Some(log) = log_stream.next().await {
-            println!("{:?}", log.unwrap().date);
-        }
+        let result = log_stream.map(|log| log.date).collect::<Vec<_>>().await;
+
+        assert_eq!(result, expect);
+
+        // while let Some(log) = log_stream.next().await {
+        //     println!("{:?}", log.date);
+        // }
     }
 }
