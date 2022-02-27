@@ -1,6 +1,6 @@
 use crate::{
     buffered_logs::BufferedLogs,
-    reader::{read_csv_async, AsyncReader, AsyncWriter},
+    reader::{read_csv_async, AsyncReader, AsyncWriter, HttpLog},
 };
 use futures::StreamExt;
 use tracing::instrument;
@@ -13,10 +13,12 @@ pub async fn process_logs(
 ) -> anyhow::Result<()> {
     let log_stream = read_csv_async(reader).await;
     let mut log_stream = BufferedLogs::new(log_stream, 2);
+
+    // TODO: SEND  TO STATS AND ALERTS
     while let Some(log) = log_stream.next().await {
         tracing::info!(
             "Processed log: {:?} - {:?}",
-            time::OffsetDateTime::from_unix_timestamp(log.date as i64)
+            time::OffsetDateTime::from_unix_timestamp(log.time as i64)
                 .unwrap()
                 .format(&time::format_description::well_known::Rfc3339),
             log

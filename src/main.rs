@@ -1,5 +1,6 @@
 mod buffered_logs;
 mod process;
+mod processors;
 mod reader;
 #[cfg(test)]
 mod test_utils;
@@ -25,7 +26,7 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::from_args();
     dotenv::dotenv().ok();
     set_up_tracing();
-    tracing::info!("Starting the Payments Engine CLI");
+    tracing::info!("Starting the Log Ingestor CLI");
     // supporting both a path or stdin as input
     let mut reader: Box<AsyncReader> = if let Some(path) = cli.path {
         let file_path = current_dir()?.join(path);

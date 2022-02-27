@@ -2,7 +2,6 @@ use crate::reader::HttpLog;
 use futures::{Stream, StreamExt};
 use pin_project::pin_project;
 use std::{
-    collections::{HashMap, VecDeque},
     pin::Pin,
     task::{Context, Poll},
 };
@@ -17,25 +16,21 @@ where
 {
     #[pin]
     stream: futures::stream::Fuse<St>,
-    seconds: u64,
-    time_map: HashMap<u64, HttpLog>,
-    buf: VecDeque<HttpLog>,
-    times: Vec<HttpLog>,
-    minor_time_in_buffer: u64,
-    major_time_in_buffer: u64,
+    seconds: usize,
+    time_buffer: Vec<HttpLog>,
+    minor_time_in_buffer: usize,
+    major_time_in_buffer: usize,
 }
 
 impl<St> BufferedLogs<St>
 where
     St: Stream<Item = LogResult>,
 {
-    pub fn new(stream: St, seconds: u64) -> Self {
+    pub fn new(stream: St, seconds: usize) -> Self {
         Self {
             stream: stream.fuse(),
             seconds,
-            time_map: HashMap::new(),
-            buf: VecDeque::new(),
-            times: Vec::new(),
+            time_buffer: Vec::new(),
             minor_time_in_buffer: 0,
             major_time_in_buffer: 0,
         }
@@ -58,7 +53,7 @@ where
                 Poll::Ready(Some(x)) => {
                     match x {
                         Ok(log) => {
-                            let current_date = log.date;
+                            let current_date = log.time;
                             if *this.minor_time_in_buffer == 0 && *this.major_time_in_buffer == 0 {
                                 *this.minor_time_in_buffer = current_date;
                                 *this.major_time_in_buffer = current_date;
@@ -70,8 +65,8 @@ where
                                 *this.major_time_in_buffer = current_date;
                             }
                             // insert and sort
-                            this.times.push(log);
-                            this.times.sort_by(|a, b| b.date.cmp(&a.date))
+                            this.time_buffer.push(log);
+                            this.time_buffer.sort_by(|a, b| b.time.cmp(&a.time))
                         }
                         Err(e) => {
                             // swallowing log parsing errors and log it
@@ -83,12 +78,12 @@ where
             }
         }
 
-        if let Some(log) = this.times.pop() {
+        if let Some(log) = this.time_buffer.pop() {
             // modify the minor date and return
             *this.minor_time_in_buffer = this
-                .times
+                .time_buffer
                 .first()
-                .map(|x| x.date)
+                .map(|x| x.time)
                 .unwrap_or_else(|| *this.major_time_in_buffer);
             return Poll::Ready(Some(log));
         }
@@ -111,7 +106,7 @@ mod tests {
     async fn assert_buffered_is_ordered(log_stream: impl Stream<Item = HttpLog>) {
         let result = log_stream.collect::<Vec<_>>().await;
         let is_sorted =
-            test_utils::is_sorted_by(result.iter(), |&a, &b| a.date.partial_cmp(&b.date));
+            test_utils::is_sorted_by(result.iter(), |&a, &b| a.time.partial_cmp(&b.time));
         assert!(is_sorted);
     }
 

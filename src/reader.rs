@@ -67,7 +67,7 @@ pub struct HttpLog {
     #[serde(rename = "authuser")]
     pub auth_user: String,
     /// Epoch time of the log.
-    pub date: u64,
+    pub time: usize,
     /// The request: verb, path, protocol.
     #[serde(deserialize_with = "deserialize_log_request")]
     pub request: LogRequest,
