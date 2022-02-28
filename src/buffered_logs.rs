@@ -55,7 +55,6 @@ where
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let mut this = self.project();
-
         while *this.major_time_in_buffer - *this.minor_time_in_buffer <= *this.seconds
             && !this.stream.is_done()
         {
@@ -78,6 +77,7 @@ where
                             let log_set =
                                 this.time_buffer.entry(current_date).or_insert_with(|| {
                                     this.ordered_time_buffer.push(current_date);
+                                    // major to minor
                                     this.ordered_time_buffer.sort_by(|a, b| b.cmp(a));
                                     Vec::new()
                                 });
@@ -89,7 +89,8 @@ where
                         }
                     }
                 }
-                Poll::Ready(None) | Poll::Pending => break,
+                Poll::Ready(None) => break,
+                Poll::Pending => (), // keep waiting
             }
         }
 
@@ -97,7 +98,7 @@ where
             // modify the minor date and return
             *this.minor_time_in_buffer = this
                 .ordered_time_buffer
-                .first()
+                .last()
                 .map(|x| *x)
                 .unwrap_or_else(|| *this.major_time_in_buffer);
             // return the entry
@@ -174,6 +175,145 @@ mod tests {
             log_dates,
             vec![1549573859, 1549573860, 1549573861, 1549573862, 1549573863]
         );
+    }
+
+    #[tokio::test]
+    async fn it_buffers_logs_and_returns_them_in_order_from_memory2() {
+        let mut input = r#"
+"remotehost","rfc931","authuser","date","request","status","bytes"
+"10.0.0.5","-","apache",1549573863,"GET /api/user HTTP/1.0",200,1307
+"10.0.0.2","-","apache",1549573863,"GET /api/user HTTP/1.0",200,1307
+"10.0.0.1","-","apache",1549573863,"GET /api/help HTTP/1.0",200,1136
+"10.0.0.4","-","apache",1549573864,"POST /api/help HTTP/1.0",200,1234
+"10.0.0.2","-","apache",1549573863,"GET /api/help HTTP/1.0",200,1234
+"10.0.0.2","-","apache",1549573864,"POST /report HTTP/1.0",200,1307
+"10.0.0.1","-","apache",1549573863,"POST /report HTTP/1.0",404,1307
+"10.0.0.2","-","apache",1549573863,"POST /report HTTP/1.0",200,1194
+"10.0.0.5","-","apache",1549573864,"POST /api/user HTTP/1.0",200,1261
+"10.0.0.5","-","apache",1549573864,"POST /api/user HTTP/1.0",200,1307
+"10.0.0.5","-","apache",1549573864,"GET /api/user HTTP/1.0",200,1234
+"10.0.0.3","-","apache",1549573865,"GET /api/help HTTP/1.0",404,1234
+"10.0.0.1","-","apache",1549573865,"POST /api/help HTTP/1.0",200,1234
+"10.0.0.5","-","apache",1549573864,"GET /api/help HTTP/1.0",404,1136
+"10.0.0.5","-","apache",1549573863,"POST /report HTTP/1.0",200,1307
+"10.0.0.4","-","apache",1549573865,"GET /report HTTP/1.0",200,1261
+"10.0.0.5","-","apache",1549573865,"GET /report HTTP/1.0",200,1194
+"10.0.0.1","-","apache",1549573865,"GET /api/user HTTP/1.0",200,1234
+"10.0.0.1","-","apache",1549573864,"GET /api/user HTTP/1.0",500,1136
+"10.0.0.3","-","apache",1549573865,"GET /api/user HTTP/1.0",404,1234
+"10.0.0.1","-","apache",1549573865,"POST /api/help HTTP/1.0",200,1234
+"10.0.0.5","-","apache",1549573864,"POST /api/help HTTP/1.0",200,1307
+"10.0.0.1","-","apache",1549573865,"GET /api/help HTTP/1.0",200,1307
+"10.0.0.4","-","apache",1549573865,"GET /report HTTP/1.0",200,1307
+"10.0.0.2","-","apache",1549573865,"GET /report HTTP/1.0",200,1234
+"10.0.0.1","-","apache",1549573866,"GET /report HTTP/1.0",200,1234
+"10.0.0.1","-","apache",1549573866,"GET /api/user HTTP/1.0",200,1261
+"10.0.0.2","-","apache",1549573865,"GET /api/user HTTP/1.0",200,1194
+"10.0.0.5","-","apache",1549573867,"POST /api/user HTTP/1.0",200,1261
+"10.0.0.1","-","apache",1549573866,"GET /api/help HTTP/1.0",200,1234
+"10.0.0.2","-","apache",1549573867,"GET /api/help HTTP/1.0",200,1234
+"10.0.0.5","-","apache",1549573865,"GET /api/help HTTP/1.0",200,1234
+"10.0.0.3","-","apache",1549573866,"GET /report HTTP/1.0",200,1234
+"10.0.0.3","-","apache",1549573866,"POST /report HTTP/1.0",200,1261
+"10.0.0.5","-","apache",1549573866,"GET /report HTTP/1.0",404,1234
+"10.0.0.3","-","apache",1549573867,"GET /api/user HTTP/1.0",200,1136
+"10.0.0.5","-","apache",1549573867,"POST /api/user HTTP/1.0",200,1234
+"10.0.0.1","-","apache",1549573868,"GET /api/user HTTP/1.0",200,1234
+"10.0.0.4","-","apache",1549573867,"GET /api/help HTTP/1.0",200,1234
+"10.0.0.5","-","apache",1549573867,"GET /api/help HTTP/1.0",200,1234
+"10.0.0.2","-","apache",1549573868,"GET /api/help HTTP/1.0",200,1136
+"10.0.0.1","-","apache",1549573868,"GET /report HTTP/1.0",200,1234
+"10.0.0.1","-","apache",1549573867,"GET /report HTTP/1.0",200,1307
+"10.0.0.3","-","apache",1549573867,"GET /report HTTP/1.0",200,1234
+"10.0.0.4","-","apache",1549573868,"GET /api/user HTTP/1.0",200,1234
+"10.0.0.2","-","apache",1549573869,"GET /api/user HTTP/1.0",200,1136
+"10.0.0.1","-","apache",1549573868,"POST /api/user HTTP/1.0",404,1234
+"10.0.0.3","-","apache",1549573868,"GET /api/help HTTP/1.0",404,1234
+"10.0.0.4","-","apache",1549573869,"POST /api/help HTTP/1.0",200,1234
+"10.0.0.3","-","apache",1549573868,"GET /api/help HTTP/1.0",200,1234
+"10.0.0.2","-","apache",1549573868,"GET /report HTTP/1.0",200,1234
+"10.0.0.2","-","apache",1549573868,"GET /report HTTP/1.0",200,1194
+"10.0.0.1","-","apache",1549573869,"POST /report HTTP/1.0",404,1234
+"10.0.0.1","-","apache",1549573870,"GET /api/user HTTP/1.0",200,1261
+"10.0.0.1","-","apache",1549573869,"GET /api/user HTTP/1.0",200,1234
+"10.0.0.5","-","apache",1549573869,"GET /api/user HTTP/1.0",200,1307
+"10.0.0.3","-","apache",1549573870,"GET /api/help HTTP/1.0",500,1234
+"10.0.0.3","-","apache",1549573870,"POST /api/help HTTP/1.0",200,1234
+"10.0.0.3","-","apache",1549573869,"GET /api/help HTTP/1.0",200,1261
+"10.0.0.2","-","apache",1549573869,"GET /report HTTP/1.0",200,1234
+"10.0.0.4","-","apache",1549573869,"POST /report HTTP/1.0",200,1307
+"10.0.0.1","-","apache",1549573869,"GET /report HTTP/1.0",200,1234
+"10.0.0.3","-","apache",1549573870,"GET /api/user HTTP/1.0",200,1307
+"10.0.0.5","-","apache",1549573870,"GET /api/user HTTP/1.0",200,1234
+"10.0.0.1","-","apache",1549573870,"GET /api/user HTTP/1.0",200,1307
+"10.0.0.3","-","apache",1549573870,"GET /api/help HTTP/1.0",200,1261
+"10.0.0.3","-","apache",1549573869,"GET /api/help HTTP/1.0",200,1261
+"10.0.0.5","-","apache",1549573869,"GET /api/help HTTP/1.0",200,1234
+"10.0.0.4","-","apache",1549573870,"GET /report HTTP/1.0",200,1234
+"10.0.0.5","-","apache",1549573869,"GET /report HTTP/1.0",200,1234
+"10.0.0.3","-","apache",1549573870,"GET /report HTTP/1.0",200,1307
+"10.0.0.5","-","apache",1549573871,"GET /api/user HTTP/1.0",200,1194
+"10.0.0.2","-","apache",1549573871,"GET /api/user HTTP/1.0",200,1261
+"10.0.0.1","-","apache",1549573871,"GET /api/user HTTP/1.0",200,1307
+"10.0.0.5","-","apache",1549573871,"GET /api/help HTTP/1.0",200,1234
+"10.0.0.1","-","apache",1549573871,"GET /api/help HTTP/1.0",200,1261
+"10.0.0.1","-","apache",1549573870,"GET /api/help HTTP/1.0",200,1234
+"10.0.0.3","-","apache",1549573872,"POST /report HTTP/1.0",200,1234
+"10.0.0.3","-","apache",1549573870,"POST /report HTTP/1.0",200,1234
+"10.0.0.1","-","apache",1549573872,"GET /report HTTP/1.0",200,1136
+"10.0.0.4","-","apache",1549573872,"POST /api/user HTTP/1.0",200,1194
+"10.0.0.2","-","apache",1549573873,"GET /api/user HTTP/1.0",200,1234
+"10.0.0.2","-","apache",1549573872,"GET /api/user HTTP/1.0",200,1234
+"10.0.0.1","-","apache",1549573873,"POST /api/help HTTP/1.0",200,1307
+"10.0.0.2","-","apache",1549573872,"GET /api/help HTTP/1.0",404,1234
+"10.0.0.1","-","apache",1549573873,"GET /api/help HTTP/1.0",500,1307
+"10.0.0.4","-","apache",1549573872,"GET /report HTTP/1.0",200,1234
+"10.0.0.1","-","apache",1549573872,"POST /report HTTP/1.0",200,1136
+"10.0.0.5","-","apache",1549573872,"GET /report HTTP/1.0",200,1234
+"10.0.0.4","-","apache",1549573873,"GET /api/user HTTP/1.0",500,1194
+"10.0.0.2","-","apache",1549573873,"GET /api/user HTTP/1.0",200,1234
+"10.0.0.4","-","apache",1549573873,"POST /api/user HTTP/1.0",200,1194
+"10.0.0.2","-","apache",1549573873,"GET /api/help HTTP/1.0",200,1234
+"10.0.0.1","-","apache",1549573873,"GET /api/help HTTP/1.0",200,1261
+"10.0.0.5","-","apache",1549573873,"GET /api/help HTTP/1.0",404,1234
+"10.0.0.1","-","apache",1549573873,"GET /report HTTP/1.0",404,1194
+"10.0.0.3","-","apache",1549573872,"POST /report HTTP/1.0",200,1307
+"10.0.0.2","-","apache",1549573872,"GET /report HTTP/1.0",200,1307
+"10.0.0.5","-","apache",1549573874,"GET /api/user HTTP/1.0",200,1261
+"10.0.0.4","-","apache",1549573874,"GET /api/user HTTP/1.0",200,1307
+"10.0.0.1","-","apache",1549573875,"GET /api/user HTTP/1.0",200,1194
+"10.0.0.1","-","apache",1549573874,"GET /api/help HTTP/1.0",200,1136
+"10.0.0.2","-","apache",1549573874,"GET /api/help HTTP/1.0",200,1261
+"10.0.0.1","-","apache",1549573874,"GET /api/help HTTP/1.0",200,1307
+"10.0.0.5","-","apache",1549573874,"POST /report HTTP/1.0",200,1261
+"10.0.0.2","-","apache",1549573873,"GET /report HTTP/1.0",500,1194
+"10.0.0.5","-","apache",1549573874,"POST /report HTTP/1.0",200,1234
+"10.0.0.2","-","apache",1549573875,"POST /api/user HTTP/1.0",200,1307
+"10.0.0.1","-","apache",1549573875,"GET /api/user HTTP/1.0",200,1234
+"10.0.0.1","-","apache",1549573875,"GET /api/user HTTP/1.0",200,1194
+"10.0.0.1","-","apache",1549573875,"GET /api/help HTTP/1.0",200,1261
+"10.0.0.3","-","apache",1549573874,"GET /api/help HTTP/1.0",200,1261
+"10.0.0.3","-","apache",1549573874,"POST /api/help HTTP/1.0",200,1307
+"10.0.0.5","-","apache",1549573875,"GET /report HTTP/1.0",200,1234
+"10.0.0.1","-","apache",1549573876,"GET /report HTTP/1.0",404,1136
+"10.0.0.3","-","apache",1549573875,"GET /report HTTP/1.0",200,1234
+"10.0.0.1","-","apache",1549573877,"GET /api/user HTTP/1.0",200,1261
+"10.0.0.5","-","apache",1549573877,"GET /api/user HTTP/1.0",200,1234
+"10.0.0.1","-","apache",1549573875,"GET /api/user HTTP/1.0",404,1234
+"10.0.0.5","-","apache",1549573876,"GET /api/help HTTP/1.0",200,1234
+"10.0.0.2","-","apache",1549573876,"POST /api/help HTTP/1.0",500,1194
+"10.0.0.1","-","apache",1549573876,"POST /api/help HTTP/1.0",200,1194
+"10.0.0.1","-","apache",1549573876,"GET /report HTTP/1.0",200,1234
+"10.0.0.1","-","apache",1549573876,"POST /report HTTP/1.0",500,1234
+"10.0.0.2","-","apache",1549573876,"GET /report HTTP/1.0",404,1194
+"10.0.0.1","-","apache",1549573877,"GET /api/user HTTP/1.0",200,1261
+"10.0.0.1","-","apache",1549573876,"POST /api/user HTTP/1.0",200,1307"#
+            .as_bytes();
+        let log_stream = read_csv_async(&mut input).await;
+        let log_stream = BufferedLogs::new(log_stream, 1);
+        let logs = log_stream.collect::<Vec<_>>().await;
+        let log_dates = logs.iter().map(|x| x.time).collect::<Vec<_>>();
+        assert_buffered_is_ordered(&logs);
     }
 
     #[tokio::test]
