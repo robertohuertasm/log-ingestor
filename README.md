@@ -64,6 +64,8 @@ Here's a simple diagram about the architecture of the tool which describes what 
 
 One of the basic ideas is that all the components are independent so they can be easily tested. There's no coupling to the reader, the writer or  even the processors. By leveraging [traits](https://doc.rust-lang.org/reference/items/traits.html), we can feel free to change the implementation of some of the components.
 
+It's also important to mention that **the code is asynchronously executed** when reading, parsing and buffering the logs. Processes are spawned in different threads (see [Writer](#writer) for more details).
+
 ## Testing
 
 Most of the components have been tested so we can be sure that the tool works as expected. Nevertheless, the CLI has not been exhaustively tested. Mostly because of time constraints while developing the exercise and because the rest of components are quite covered.
