@@ -40,7 +40,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let processors: Vec<Box<dyn Processor>> =
-        vec![Box::new(Alerts::new(10, 120)), Box::new(Stats {})];
+        vec![Box::new(Alerts::new(10, 120)), Box::new(Stats::new(10))];
 
     process::process_logs(&mut reader, processors).await?;
     Ok(())

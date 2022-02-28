@@ -95,41 +95,16 @@ impl Processor for Alerts {
 
 #[cfg(test)]
 mod tests {
-    use crate::reader::{HttpLog, LogRequest};
-
     use super::*;
+    use crate::test_utils::build_test_http_grouped_log;
     use std::io::BufWriter;
-
-    fn build_test_http_log(time: usize) -> HttpLog {
-        HttpLog {
-            remote_host: "10.1.1.1".to_string(),
-            auth_user: "auth_user".to_string(),
-            rfc931: "-".to_string(),
-            time,
-            request: LogRequest {
-                verb: "GET".to_string(),
-                path: "/api/test".to_string(),
-                section: "/api".to_string(),
-                protocol: "HTTP/1.1".to_string(),
-            },
-            status: 200,
-            bytes: 100,
-        }
-    }
-
-    fn build_test_http_grouped_log(time: usize, len: usize) -> GroupedHttpLogs {
-        GroupedHttpLogs {
-            time,
-            logs: (0..len).map(|_| build_test_http_log(time)).collect(),
-        }
-    }
 
     #[tokio::test]
     async fn should_alert_if_threshold_is_triggered() {
         let mut alerts = Alerts::new(1, 2);
         let mut writer = BufWriter::new(Vec::<u8>::new());
 
-        let logs = build_test_http_grouped_log(1, 3);
+        let logs = build_test_http_grouped_log(1, 3, None);
         alerts.process(&logs, &mut writer).unwrap();
 
         let msg = String::from_utf8(writer.into_inner().unwrap()).unwrap();
@@ -145,8 +120,8 @@ mod tests {
         let mut writer = BufWriter::new(Vec::<u8>::new());
 
         let logs = vec![
-            build_test_http_grouped_log(1, 3),
-            build_test_http_grouped_log(2, 3),
+            build_test_http_grouped_log(1, 3, None),
+            build_test_http_grouped_log(2, 3, None),
         ];
         for log in logs {
             alerts.process(&log, &mut writer).unwrap();
@@ -165,8 +140,8 @@ mod tests {
         let mut writer = BufWriter::new(Vec::<u8>::new());
 
         let logs = vec![
-            build_test_http_grouped_log(1, 3),
-            build_test_http_grouped_log(4, 1),
+            build_test_http_grouped_log(1, 3, None),
+            build_test_http_grouped_log(4, 1, None),
         ];
 
         for log in logs {
@@ -186,9 +161,9 @@ mod tests {
         let mut writer = BufWriter::new(Vec::<u8>::new());
 
         let logs = vec![
-            build_test_http_grouped_log(1, 3),
-            build_test_http_grouped_log(4, 1),
-            build_test_http_grouped_log(8, 1),
+            build_test_http_grouped_log(1, 3, None),
+            build_test_http_grouped_log(4, 1, None),
+            build_test_http_grouped_log(8, 1, None),
         ];
 
         for log in logs {
