@@ -312,7 +312,6 @@ mod tests {
         let log_stream = read_csv_async(&mut input).await;
         let log_stream = BufferedLogs::new(log_stream, 1);
         let logs = log_stream.collect::<Vec<_>>().await;
-        let log_dates = logs.iter().map(|x| x.time).collect::<Vec<_>>();
         assert_buffered_is_ordered(&logs);
     }
 

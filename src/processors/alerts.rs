@@ -37,58 +37,58 @@ impl Processor for Alerts {
         if self.minor_time == 0 && self.major_time == 0 {
             tracing::debug!("Initial time: {}", log_group.time);
             self.minor_time = log_group.time;
-            self.major_time = log_group.time;
-        } else {
-            if log_group.time < self.minor_time {
-                return Err(anyhow::Error::msg(
+        }
+
+        if log_group.time < self.minor_time {
+            return Err(anyhow::Error::msg(
                     "Log group time is less than the minor time. Try to adjust the BufferedLogs seconds property.",
                 ));
-            }
+        }
 
-            self.major_time = log_group.time;
+        self.major_time = log_group.time;
 
-            let diff_time = self.major_time - self.minor_time;
+        let diff_time = self.major_time - self.minor_time;
 
-            if diff_time >= self.window_size_in_secs {
-                // set the minor time to major - window secs
-                self.minor_time = self.major_time - self.window_size_in_secs;
-                // draing the log groups < minor time
-                while let Some(log_group) = self.buffer.front() {
-                    if log_group.time >= self.minor_time {
-                        break;
-                    }
-                    self.buffer.pop_front();
+        if diff_time >= self.window_size_in_secs {
+            // set the minor time to major - window secs
+            self.minor_time = self.major_time - self.window_size_in_secs;
+            // draing the log groups < minor time
+            while let Some(log_group) = self.buffer.front() {
+                if log_group.time >= self.minor_time {
+                    break;
                 }
-            }
-
-            // calculate the avg requests per window secs
-            let total_reqs = self
-                .buffer
-                .iter()
-                .fold(0, |acc, log_group| acc + log_group.logs.len());
-
-            let avg_req_per_sec = total_reqs as f64 / self.window_size_in_secs as f64;
-
-            // check if the avg requests per window secs is greater than the threshold
-            let is_above_threshold = avg_req_per_sec > self.avg_req_sec_threshold as f64;
-
-            if is_above_threshold && !self.is_alert_set {
-                self.is_alert_set = true;
-                let msg = format!(
-                    "High traffic generated an alert - hits = {}, triggered at {}\n",
-                    avg_req_per_sec, log_group.time
-                );
-                writer.write_all(msg.as_bytes())?;
-            } else if self.is_alert_set && !is_above_threshold {
-                self.is_alert_set = false;
-                let msg = format!(
-                    "Normal traffic recovered - hits = {}, recovered at {}\n",
-                    avg_req_per_sec, log_group.time,
-                );
-
-                writer.write_all(msg.as_bytes())?;
+                self.buffer.pop_front();
             }
         }
+
+        // calculate the avg requests per window secs
+        let total_reqs = self
+            .buffer
+            .iter()
+            .fold(0, |acc, log_group| acc + log_group.logs.len());
+
+        let avg_req_per_sec = total_reqs as f64 / self.window_size_in_secs as f64;
+
+        // check if the avg requests per window secs is greater than the threshold
+        let is_above_threshold = avg_req_per_sec > self.avg_req_sec_threshold as f64;
+
+        if is_above_threshold && !self.is_alert_set {
+            self.is_alert_set = true;
+            let msg = format!(
+                "High traffic generated an alert - hits = {}, triggered at {}\n",
+                avg_req_per_sec, log_group.time
+            );
+            writer.write_all(msg.as_bytes())?;
+        } else if self.is_alert_set && !is_above_threshold {
+            self.is_alert_set = false;
+            let msg = format!(
+                "Normal traffic recovered - hits = {}, recovered at {}\n",
+                avg_req_per_sec, log_group.time,
+            );
+
+            writer.write_all(msg.as_bytes())?;
+        }
+
         Ok(())
     }
 }
