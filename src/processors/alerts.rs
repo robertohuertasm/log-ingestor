@@ -26,10 +26,6 @@ impl Alerts {
 }
 
 impl Processor for Alerts {
-    fn name(&self) -> &'static str {
-        "Alerts processor"
-    }
-
     #[instrument(skip(self, writer))]
     fn process(&mut self, log: &HttpLog, writer: &mut dyn std::io::Write) -> anyhow::Result<()> {
         if self.minor_time == 0 && self.major_time == 0 {
