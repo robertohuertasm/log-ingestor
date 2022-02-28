@@ -41,12 +41,11 @@ pub fn build_test_http_log(time: usize, path: Option<String>) -> HttpLog {
         auth_user: "auth_user".to_string(),
         rfc931: "-".to_string(),
         time,
-        request: LogRequest {
-            verb: "GET".to_string(),
-            path: path.unwrap_or("/api/test".to_string()),
-            section: "/api".to_string(),
-            protocol: "HTTP/1.1".to_string(),
-        },
+        request: LogRequest::from_str(&format!(
+            r#""10.0.0.2","-","apache",1549573860,"GET {} HTTP/1.1",200,100"#,
+            path.unwrap_or("/api/test".to_string())
+        ))
+        .unwrap(),
         status: 200,
         bytes: 100,
     }

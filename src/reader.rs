@@ -18,7 +18,7 @@ pub struct LogRequest {
 }
 
 impl LogRequest {
-    fn from_str(line: &str) -> anyhow::Result<Self> {
+    pub fn from_str(line: &str) -> anyhow::Result<Self> {
         let mut parts = line.split_whitespace();
 
         let verb = parts
