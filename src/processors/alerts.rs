@@ -1,5 +1,6 @@
 use super::HttpLog;
 use super::Processor;
+use std::collections::VecDeque;
 use tracing::instrument;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -7,7 +8,7 @@ pub struct Alerts {
     avg_req_sec_threshold: usize,
     minor_time: usize,
     major_time: usize,
-    buffer: Vec<HttpLog>,
+    buffer: VecDeque<HttpLog>,
     is_alert_set: bool,
     window_size_in_secs: usize,
 }
@@ -18,7 +19,7 @@ impl Alerts {
             avg_req_sec_threshold,
             minor_time: 0,
             major_time: 0,
-            buffer: Vec::new(),
+            buffer: VecDeque::new(),
             is_alert_set: false,
             window_size_in_secs,
         }
@@ -28,11 +29,11 @@ impl Alerts {
 impl Processor for Alerts {
     #[instrument(skip(self, writer))]
     fn process(&mut self, log: &HttpLog, writer: &mut dyn std::io::Write) -> anyhow::Result<()> {
+        self.buffer.push_back(log.clone());
         if self.minor_time == 0 && self.major_time == 0 {
             tracing::debug!("Initial time: {}", log.time);
             self.minor_time = log.time;
             self.major_time = log.time;
-            self.buffer.push(log.clone());
         } else {
             if log.time < self.minor_time {
                 return Err(anyhow::Error::msg(
@@ -40,18 +41,20 @@ impl Processor for Alerts {
                 ));
             }
 
-            self.buffer.push(log.clone());
-
             self.major_time = log.time;
 
             let diff_time = self.major_time - self.minor_time;
 
             if diff_time >= self.window_size_in_secs {
-                // set the minor time to major - 120
+                // set the minor time to major - window secs
                 self.minor_time = self.major_time - self.window_size_in_secs;
                 // draing the logs < minor time
-                self.buffer.retain(|log| log.time >= self.minor_time);
-                // TODO: optimization: use a vecdeque and pop_front until lot time >= minor time
+                while let Some(log) = self.buffer.front() {
+                    if log.time >= self.minor_time {
+                        break;
+                    }
+                    self.buffer.pop_front();
+                }
             }
 
             // calculate the avg requests per window secs

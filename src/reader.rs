@@ -119,7 +119,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore]
     async fn reads_csv_async_works_ok() {
         let mut input = r#"
 "remotehost","rfc931","authuser","date","request","status","bytes"
