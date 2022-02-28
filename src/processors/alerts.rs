@@ -151,7 +151,7 @@ mod tests {
         let msg = String::from_utf8(writer.into_inner().unwrap()).unwrap();
         assert_eq!(
             msg,
-            "\n>>> ALERT\nHigh traffic generated an alert - hits = 1.5, triggered at 1\nNormal traffic recovered - hits = 0.5, recovered at 4\n"
+            "\n>>> ALERT\nHigh traffic generated an alert - hits = 1.5, triggered at 1\n\n>>> ALERT\nNormal traffic recovered - hits = 0.5, recovered at 4\n"
         );
     }
 
@@ -173,7 +173,7 @@ mod tests {
         let msg = String::from_utf8(writer.into_inner().unwrap()).unwrap();
         assert_eq!(
             msg,
-            "\n>>> ALERT\nHigh traffic generated an alert - hits = 1.5, triggered at 1\nNormal traffic recovered - hits = 0.5, recovered at 4\n"
+            "\n>>> ALERT\nHigh traffic generated an alert - hits = 1.5, triggered at 1\n\n>>> ALERT\nNormal traffic recovered - hits = 0.5, recovered at 4\n"
         );
     }
 }
