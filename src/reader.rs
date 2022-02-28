@@ -5,7 +5,7 @@ use tracing::instrument;
 pub type AsyncReader = dyn tokio::io::AsyncRead + Send + Sync + Unpin;
 
 /// Represents a Log Request
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LogRequest {
     /// Verb of the request.
     pub verb: String,
@@ -56,7 +56,7 @@ where
 }
 
 /// Represents an Http Log.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct HttpLog {
     /// The remote host IP.
     #[serde(rename = "remotehost")]
@@ -94,121 +94,132 @@ pub async fn read_csv_async(
         })
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use futures::{FutureExt, TryStreamExt};
-//     use payments_engine_core::dec;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use futures::{FutureExt, TryStreamExt};
 
-//     const ERR: &'static str = "err";
+    const ERR: &'static str = "err";
 
-//     #[tokio::test]
-//     async fn reads_csv_async_works_ok() {
-//         let mut input = r"
-//         type,client,tx,amount
-//         deposit,1,10,100
-//         deposito,1,11,100.0
-//         withdrawal,1,12,200.0
-//         resolve,1,13,
-//         resolve,1,14, 100.000
-//         dispute,1,15,
-//         dispute,1,16, 100.000
-//         chargeback,1,17,
-//         chargeback,1,18, 100.000
-//         deposit,1,19,5.001
-//         withdrawal,1,20,43.3423
-//         withdrawal,1,21,
-//         deposit,1,22,"
-//             .as_bytes();
+    fn build_test_http_log(time: usize) -> HttpLog {
+        HttpLog {
+            remote_host: "10.0.0.1".to_string(),
+            auth_user: "apache".to_string(),
+            rfc931: "-".to_string(),
+            time,
+            request: LogRequest {
+                verb: "GET".to_string(),
+                path: "/api/user".to_string(),
+                section: "/api".to_string(),
+                protocol: "HTTP/1.0".to_string(),
+            },
+            status: 200,
+            bytes: 1234,
+        }
+    }
 
-//         let result = read_csv_async(&mut input)
-//             .map(|tx| tx.map_err(|_| ERR))
-//             .await
-//             .collect::<Vec<_>>()
-//             .await;
+    #[tokio::test]
+    #[ignore]
+    async fn reads_csv_async_works_ok() {
+        let mut input = r#"
+"remotehost","rfc931","authuser","date","request","status","bytes"
+"10.0.0.1","-","apache",1549573860,"GET /api/user HTTP/1.0",200,1234
+"10.0.0.1","-","apache","a","GET /api/user HTTP/1.0",200,1234
+"10.0.0.1","-","apache",1549573860,"GET /api/user HTTP/1.0",200,1234"#
+            .as_bytes();
 
-//         let expected = vec![
-//             Ok(EngineTransaction::deposit(10, 1, dec!(100.00))),
-//             Err(ERR),
-//             Ok(EngineTransaction::withdrawal(12, 1, dec!(200.00))),
-//             Ok(EngineTransaction::resolve(13, 1)),
-//             Ok(EngineTransaction::resolve(14, 1)),
-//             Ok(EngineTransaction::dispute(15, 1)),
-//             Ok(EngineTransaction::dispute(16, 1)),
-//             Ok(EngineTransaction::chargeback(17, 1)),
-//             Ok(EngineTransaction::chargeback(18, 1)),
-//             Ok(EngineTransaction::deposit(19, 1, dec!(5.001))),
-//             Ok(EngineTransaction::withdrawal(20, 1, dec!(43.3423))),
-//             Ok(EngineTransaction::withdrawal(21, 1, dec!(0.0))),
-//             Ok(EngineTransaction::deposit(22, 1, dec!(0.0))),
-//         ];
+        let result = read_csv_async(&mut input)
+            .map(|tx| tx.map_err(|_| ERR))
+            .await
+            .collect::<Vec<_>>()
+            .await;
 
-//         assert_eq!(result, expected)
-//     }
+        let expected = vec![
+            Ok(build_test_http_log(1549573860)),
+            Err(ERR),
+            Ok(build_test_http_log(1549573860)),
+        ];
 
-//     #[tokio::test]
-//     async fn reads_csv_async_works_ok_with_untrimmed_content() {
-//         let mut input = r"
-//         type    ,client,        tx,     amount
-//             deposit   ,1  , 10,   100
-//           deposito,      1, 11 , 100.0,
-//         withdrawal,1,12,   200.0
-//         resolve,1,     13,
-//         resolve,1,    14, 100.000,
-//         dispute   ,1,   15,
-//          dispute  ,1,    16,   100.000,
-//            chargeback ,1,17,
-//          chargeback     ,1, 18, 100.000,
-//            deposit  ,1, 19, 5.001
-//         withdrawal, 1,    20,  43.3423
-//          withdrawal ,1, 21   ,
-//             deposit   , 1, 22,  "
-//             .as_bytes();
+        assert_eq!(result, expected);
+    }
 
-//         let result = read_csv_async(&mut input)
-//             .map(|tx| tx.map_err(|_| ERR))
-//             .await
-//             .collect::<Vec<_>>()
-//             .await;
+    #[tokio::test]
+    async fn reads_csv_async_works_ok_with_untrimmed_content_no_quotes() {
+        let mut input = r#"
+  "remotehost" ,"rfc931"  ,"authuser"  ,"date"  ,  "request", "status",  "bytes"
+10.0.0.1  , -  ,   apache  ,  1549573860  , GET /api/user HTTP/1.0   , 200 , 1234
+  10.0.0.1  , -   ,apache, a  ,  GET /api/user HTTP/1.0 , 200 ,  1234 "#
+            .as_bytes();
 
-//         let expected = vec![
-//             Ok(EngineTransaction::deposit(10, 1, dec!(100.00))),
-//             Err(ERR),
-//             Ok(EngineTransaction::withdrawal(12, 1, dec!(200.00))),
-//             Ok(EngineTransaction::resolve(13, 1)),
-//             Ok(EngineTransaction::resolve(14, 1)),
-//             Ok(EngineTransaction::dispute(15, 1)),
-//             Ok(EngineTransaction::dispute(16, 1)),
-//             Ok(EngineTransaction::chargeback(17, 1)),
-//             Ok(EngineTransaction::chargeback(18, 1)),
-//             Ok(EngineTransaction::deposit(19, 1, dec!(5.001))),
-//             Ok(EngineTransaction::withdrawal(20, 1, dec!(43.3423))),
-//             Ok(EngineTransaction::withdrawal(21, 1, dec!(0.0))),
-//             Ok(EngineTransaction::deposit(22, 1, dec!(0.0))),
-//         ];
+        let result = read_csv_async(&mut input)
+            .map(|tx| tx.map_err(|_| ERR))
+            .await
+            .collect::<Vec<_>>()
+            .await;
 
-//         assert_eq!(result, expected)
-//     }
+        let expected = vec![Ok(build_test_http_log(1549573860)), Err(ERR)];
 
-//     #[tokio::test]
-//     async fn reads_csv_async_works_ok_with_no_trailing_comma() {
-//         let mut input = r"
-//         type,client,tx,amount
-//         dispute,1,10
-//         resolve,1,11"
-//             .as_bytes();
+        assert_eq!(result, expected)
+    }
 
-//         let result = read_csv_async(&mut input)
-//             .map(|tx| tx.map_err(|e| e.to_string()))
-//             .await
-//             .collect::<Vec<_>>()
-//             .await;
+    #[tokio::test]
+    async fn reads_csv_async_works_ok_with_untrimmed_content_with_quotes_no_front_spaces() {
+        let mut input = r#"
+  "remotehost" ,"rfc931"  ,"authuser"  ,"date"  ,  "request", "status",  "bytes"
+"10.0.0.1" ,"-" ,"apache"  ,1549573860  ,"GET /api/user HTTP/1.0"  , 200 , 1234
+"10.0.0.1","-","apache","a" ,"GET /api/user HTTP/1.0" ,200 ,1234 "#
+            .as_bytes();
 
-//         let expected = vec![
-//             Ok(EngineTransaction::dispute(10, 1)),
-//             Ok(EngineTransaction::resolve(11, 1)),
-//         ];
+        let result = read_csv_async(&mut input)
+            .map(|tx| tx.map_err(|_| ERR))
+            .await
+            .collect::<Vec<_>>()
+            .await;
 
-//         assert_eq!(result, expected)
-//     }
-// }
+        let expected = vec![Ok(build_test_http_log(1549573860)), Err(ERR)];
+
+        assert_eq!(result, expected)
+    }
+
+    #[tokio::test]
+    async fn reads_csv_async_does_not_work_with_untrimmed_content_with_quotes_and_front_spaces() {
+        let mut input = r#"
+  "remotehost" ,"rfc931"  ,"authuser"  ,"date"  ,  "request", "status",  "bytes"
+  "10.0.0.1" ,  "-" ,  "apache"  ,   1549573860  , "GET /api/user HTTP/1.0"  , 200 , 1234
+"10.0.0.1","-","apache","a" ,"GET /api/user HTTP/1.0" ,200 ,1234 "#
+            .as_bytes();
+
+        let result = read_csv_async(&mut input)
+            .map(|tx| tx.map_err(|_| ERR))
+            .await
+            .collect::<Vec<_>>()
+            .await;
+
+        let expected = vec![Ok(build_test_http_log(1549573860)), Err(ERR)];
+        assert_ne!(result, expected)
+    }
+
+    #[tokio::test]
+    async fn reads_csv_async_works_ok_with_trailing_comma() {
+        let mut input = r#"
+"remotehost","rfc931","authuser","date","request","status","bytes",
+"10.0.0.1","-","apache",1549573860,"GET /api/user HTTP/1.0",200,1234,
+"10.0.0.1","-","apache","a","GET /api/user HTTP/1.0",200,1234,
+"10.0.0.1","-","apache",1549573860,"GET /api/user HTTP/1.0",200,1234,"#
+            .as_bytes();
+
+        let result = read_csv_async(&mut input)
+            .map(|tx| tx.map_err(|_| ERR))
+            .await
+            .collect::<Vec<_>>()
+            .await;
+
+        let expected = vec![
+            Ok(build_test_http_log(1549573860)),
+            Err(ERR),
+            Ok(build_test_http_log(1549573860)),
+        ];
+
+        assert_eq!(result, expected);
+    }
+}
