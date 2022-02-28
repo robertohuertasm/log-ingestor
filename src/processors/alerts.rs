@@ -75,14 +75,14 @@ impl Processor for Alerts {
         if is_above_threshold && !self.is_alert_set {
             self.is_alert_set = true;
             let msg = format!(
-                "High traffic generated an alert - hits = {}, triggered at {}\n",
+                "\n>>> ALERT\nHigh traffic generated an alert - hits = {}, triggered at {}\n",
                 avg_req_per_sec, log_group.time
             );
             writer.write_all(msg.as_bytes())?;
         } else if self.is_alert_set && !is_above_threshold {
             self.is_alert_set = false;
             let msg = format!(
-                "Normal traffic recovered - hits = {}, recovered at {}\n",
+                "\n>>> ALERT\nNormal traffic recovered - hits = {}, recovered at {}\n",
                 avg_req_per_sec, log_group.time,
             );
 
@@ -110,7 +110,7 @@ mod tests {
         let msg = String::from_utf8(writer.into_inner().unwrap()).unwrap();
         assert_eq!(
             msg,
-            "High traffic generated an alert - hits = 1.5, triggered at 1\n"
+            "\n>>> ALERT\nHigh traffic generated an alert - hits = 1.5, triggered at 1\n"
         );
     }
 
@@ -130,7 +130,7 @@ mod tests {
         let msg = String::from_utf8(writer.into_inner().unwrap()).unwrap();
         assert_eq!(
             msg,
-            "High traffic generated an alert - hits = 1.5, triggered at 1\n"
+            "\n>>> ALERT\nHigh traffic generated an alert - hits = 1.5, triggered at 1\n"
         );
     }
 
@@ -151,7 +151,7 @@ mod tests {
         let msg = String::from_utf8(writer.into_inner().unwrap()).unwrap();
         assert_eq!(
             msg,
-            "High traffic generated an alert - hits = 1.5, triggered at 1\nNormal traffic recovered - hits = 0.5, recovered at 4\n"
+            "\n>>> ALERT\nHigh traffic generated an alert - hits = 1.5, triggered at 1\nNormal traffic recovered - hits = 0.5, recovered at 4\n"
         );
     }
 
@@ -173,7 +173,7 @@ mod tests {
         let msg = String::from_utf8(writer.into_inner().unwrap()).unwrap();
         assert_eq!(
             msg,
-            "High traffic generated an alert - hits = 1.5, triggered at 1\nNormal traffic recovered - hits = 0.5, recovered at 4\n"
+            "\n>>> ALERT\nHigh traffic generated an alert - hits = 1.5, triggered at 1\nNormal traffic recovered - hits = 0.5, recovered at 4\n"
         );
     }
 }
