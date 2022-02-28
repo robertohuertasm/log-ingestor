@@ -1,10 +1,15 @@
 mod alerts;
 mod stats;
 
-use crate::reader::HttpLog;
 pub use alerts::Alerts;
 pub use stats::Stats;
 
+use crate::buffered_logs::GroupedHttpLogs;
+
 pub trait Processor: Sync + Send {
-    fn process(&mut self, log: &HttpLog, writer: &mut dyn std::io::Write) -> anyhow::Result<()>;
+    fn process(
+        &mut self,
+        logs: &GroupedHttpLogs,
+        writer: &mut dyn std::io::Write,
+    ) -> anyhow::Result<()>;
 }

@@ -1,4 +1,4 @@
-use super::HttpLog;
+use super::GroupedHttpLogs;
 use super::Processor;
 use std::collections::VecDeque;
 use tracing::instrument;
@@ -8,7 +8,7 @@ pub struct Alerts {
     avg_req_sec_threshold: usize,
     minor_time: usize,
     major_time: usize,
-    buffer: VecDeque<HttpLog>,
+    buffer: VecDeque<GroupedHttpLogs>,
     is_alert_set: bool,
     window_size_in_secs: usize,
 }
@@ -28,29 +28,33 @@ impl Alerts {
 
 impl Processor for Alerts {
     #[instrument(skip(self, writer))]
-    fn process(&mut self, log: &HttpLog, writer: &mut dyn std::io::Write) -> anyhow::Result<()> {
-        self.buffer.push_back(log.clone());
+    fn process(
+        &mut self,
+        log_group: &GroupedHttpLogs,
+        writer: &mut dyn std::io::Write,
+    ) -> anyhow::Result<()> {
+        self.buffer.push_back(log_group.clone());
         if self.minor_time == 0 && self.major_time == 0 {
-            tracing::debug!("Initial time: {}", log.time);
-            self.minor_time = log.time;
-            self.major_time = log.time;
+            tracing::debug!("Initial time: {}", log_group.time);
+            self.minor_time = log_group.time;
+            self.major_time = log_group.time;
         } else {
-            if log.time < self.minor_time {
+            if log_group.time < self.minor_time {
                 return Err(anyhow::Error::msg(
-                    "Log time is less than the minor time. Try to adjust the BufferedLogs seconds property.",
+                    "Log group time is less than the minor time. Try to adjust the BufferedLogs seconds property.",
                 ));
             }
 
-            self.major_time = log.time;
+            self.major_time = log_group.time;
 
             let diff_time = self.major_time - self.minor_time;
 
             if diff_time >= self.window_size_in_secs {
                 // set the minor time to major - window secs
                 self.minor_time = self.major_time - self.window_size_in_secs;
-                // draing the logs < minor time
-                while let Some(log) = self.buffer.front() {
-                    if log.time >= self.minor_time {
+                // draing the log groups < minor time
+                while let Some(log_group) = self.buffer.front() {
+                    if log_group.time >= self.minor_time {
                         break;
                     }
                     self.buffer.pop_front();
@@ -58,7 +62,13 @@ impl Processor for Alerts {
             }
 
             // calculate the avg requests per window secs
-            let avg_req_per_sec = self.buffer.len() as f64 / self.window_size_in_secs as f64;
+            let total_reqs = self
+                .buffer
+                .iter()
+                .fold(0, |acc, log_group| acc + log_group.logs.len());
+
+            let avg_req_per_sec = total_reqs as f64 / self.window_size_in_secs as f64;
+
             // check if the avg requests per window secs is greater than the threshold
             let is_above_threshold = avg_req_per_sec > self.avg_req_sec_threshold as f64;
 
@@ -66,14 +76,14 @@ impl Processor for Alerts {
                 self.is_alert_set = true;
                 let msg = format!(
                     "High traffic generated an alert - hits = {}, triggered at {}\n",
-                    avg_req_per_sec, log.time
+                    avg_req_per_sec, log_group.time
                 );
                 writer.write_all(msg.as_bytes())?;
             } else if self.is_alert_set && !is_above_threshold {
                 self.is_alert_set = false;
                 let msg = format!(
                     "Normal traffic recovered - hits = {}, recovered at {}\n",
-                    avg_req_per_sec, log.time,
+                    avg_req_per_sec, log_group.time,
                 );
 
                 writer.write_all(msg.as_bytes())?;
@@ -85,7 +95,7 @@ impl Processor for Alerts {
 
 #[cfg(test)]
 mod tests {
-    use crate::reader::LogRequest;
+    use crate::reader::{HttpLog, LogRequest};
 
     use super::*;
     use std::io::BufWriter;
@@ -107,19 +117,20 @@ mod tests {
         }
     }
 
+    fn build_test_http_grouped_log(time: usize, len: usize) -> GroupedHttpLogs {
+        GroupedHttpLogs {
+            time,
+            logs: (0..len).map(|_| build_test_http_log(time)).collect(),
+        }
+    }
+
     #[tokio::test]
     async fn should_alert_if_threshold_is_triggered() {
         let mut alerts = Alerts::new(1, 2);
         let mut writer = BufWriter::new(Vec::<u8>::new());
 
-        let logs = vec![
-            build_test_http_log(1),
-            build_test_http_log(1),
-            build_test_http_log(1),
-        ];
-        for log in logs {
-            alerts.process(&log, &mut writer).unwrap();
-        }
+        let logs = build_test_http_grouped_log(1, 3);
+        alerts.process(&logs, &mut writer).unwrap();
 
         let msg = String::from_utf8(writer.into_inner().unwrap()).unwrap();
         assert_eq!(
@@ -134,12 +145,8 @@ mod tests {
         let mut writer = BufWriter::new(Vec::<u8>::new());
 
         let logs = vec![
-            build_test_http_log(1),
-            build_test_http_log(1),
-            build_test_http_log(1),
-            build_test_http_log(1),
-            build_test_http_log(1),
-            build_test_http_log(1),
+            build_test_http_grouped_log(1, 3),
+            build_test_http_grouped_log(2, 3),
         ];
         for log in logs {
             alerts.process(&log, &mut writer).unwrap();
@@ -158,11 +165,10 @@ mod tests {
         let mut writer = BufWriter::new(Vec::<u8>::new());
 
         let logs = vec![
-            build_test_http_log(1),
-            build_test_http_log(1),
-            build_test_http_log(1),
-            build_test_http_log(4),
+            build_test_http_grouped_log(1, 3),
+            build_test_http_grouped_log(4, 1),
         ];
+
         for log in logs {
             alerts.process(&log, &mut writer).unwrap();
         }
@@ -180,12 +186,11 @@ mod tests {
         let mut writer = BufWriter::new(Vec::<u8>::new());
 
         let logs = vec![
-            build_test_http_log(1),
-            build_test_http_log(1),
-            build_test_http_log(1),
-            build_test_http_log(4),
-            build_test_http_log(8),
+            build_test_http_grouped_log(1, 3),
+            build_test_http_grouped_log(4, 1),
+            build_test_http_grouped_log(8, 1),
         ];
+
         for log in logs {
             alerts.process(&log, &mut writer).unwrap();
         }
