@@ -99,8 +99,8 @@ where
             *this.minor_time_in_buffer = this
                 .ordered_time_buffer
                 .last()
-                .map(|x| *x)
-                .unwrap_or_else(|| *this.major_time_in_buffer);
+                .copied()
+                .unwrap_or(*this.major_time_in_buffer);
             // return the entry
             if let Some(group) = this
                 .time_buffer

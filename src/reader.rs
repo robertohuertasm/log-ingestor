@@ -41,7 +41,7 @@ impl LogRequest {
         Ok(Self {
             verb: verb.to_string(),
             path: path.to_string(),
-            section: section.to_string(),
+            section,
             protocol: protocol.to_string(),
         })
     }
