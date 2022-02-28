@@ -75,15 +75,19 @@ impl Processor for Alerts {
         if is_above_threshold && !self.is_alert_set {
             self.is_alert_set = true;
             let msg = format!(
-                "\n>>> ALERT\nHigh traffic generated an alert - hits = {}, triggered at {}\n",
-                avg_req_per_sec, log_group.time
+                "{}High traffic generated an alert - hits = {}, triggered at {}\n",
+                alert_prefix(),
+                avg_req_per_sec,
+                log_group.time
             );
             writer.write_all(msg.as_bytes())?;
         } else if self.is_alert_set && !is_above_threshold {
             self.is_alert_set = false;
             let msg = format!(
-                "\n>>> ALERT\nNormal traffic recovered - hits = {}, recovered at {}\n",
-                avg_req_per_sec, log_group.time,
+                "{}Normal traffic recovered - hits = {}, recovered at {}\n",
+                alert_prefix(),
+                avg_req_per_sec,
+                log_group.time,
             );
 
             writer.write_all(msg.as_bytes())?;
@@ -91,6 +95,10 @@ impl Processor for Alerts {
 
         Ok(())
     }
+}
+
+fn alert_prefix() -> String {
+    console::style("\n>>> ALERT\n").bold().red().to_string()
 }
 
 #[cfg(test)]
@@ -110,7 +118,10 @@ mod tests {
         let msg = String::from_utf8(writer.into_inner().unwrap()).unwrap();
         assert_eq!(
             msg,
-            "\n>>> ALERT\nHigh traffic generated an alert - hits = 1.5, triggered at 1\n"
+            format!(
+                "{}High traffic generated an alert - hits = 1.5, triggered at 1\n",
+                alert_prefix()
+            )
         );
     }
 
@@ -130,7 +141,10 @@ mod tests {
         let msg = String::from_utf8(writer.into_inner().unwrap()).unwrap();
         assert_eq!(
             msg,
-            "\n>>> ALERT\nHigh traffic generated an alert - hits = 1.5, triggered at 1\n"
+            format!(
+                "{}High traffic generated an alert - hits = 1.5, triggered at 1\n",
+                alert_prefix()
+            )
         );
     }
 
@@ -151,7 +165,8 @@ mod tests {
         let msg = String::from_utf8(writer.into_inner().unwrap()).unwrap();
         assert_eq!(
             msg,
-            "\n>>> ALERT\nHigh traffic generated an alert - hits = 1.5, triggered at 1\n\n>>> ALERT\nNormal traffic recovered - hits = 0.5, recovered at 4\n"
+            format!("{0}High traffic generated an alert - hits = 1.5, triggered at 1\n{0}Normal traffic recovered - hits = 0.5, recovered at 4\n", alert_prefix()
+        )
         );
     }
 
@@ -173,7 +188,7 @@ mod tests {
         let msg = String::from_utf8(writer.into_inner().unwrap()).unwrap();
         assert_eq!(
             msg,
-            "\n>>> ALERT\nHigh traffic generated an alert - hits = 1.5, triggered at 1\n\n>>> ALERT\nNormal traffic recovered - hits = 0.5, recovered at 4\n"
+            format!("{0}High traffic generated an alert - hits = 1.5, triggered at 1\n{0}Normal traffic recovered - hits = 0.5, recovered at 4\n", alert_prefix())
         );
     }
 }

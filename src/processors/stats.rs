@@ -41,7 +41,7 @@ impl Processor for Stats {
         if diff_time >= self.period_in_secs {
             tracing::info!("Printing stats");
             self.last_time = log_group.time;
-            writer.write_all(format!("\nSTATS ({}s):\n********\n", diff_time).as_bytes())?;
+            writer.write_all(stats_prefix(diff_time).as_bytes())?;
             // TODO: sort the stats by most requested sections
             for (section, logs) in &self.buffer {
                 let mut total_reqs = 0;
@@ -63,6 +63,13 @@ impl Processor for Stats {
         }
         Ok(())
     }
+}
+
+fn stats_prefix(diff_time: usize) -> String {
+    console::style(format!("\nSTATS ({}s):\n********\n", diff_time))
+        .bold()
+        .blue()
+        .to_string()
 }
 
 #[cfg(test)]
@@ -89,7 +96,7 @@ mod tests {
         let msg = String::from_utf8(writer.into_inner().unwrap()).unwrap();
         assert_eq!(
             msg,
-            "\nSTATS (3s):\n********\nSection: /api, Total Hits: 8, Avg Reqs/Sec: 2.6666666666666665, Avg Time: 0.375s, Avg Bytes: 100\n"
+            format!("{}Section: /api, Total Hits: 8, Avg Reqs/Sec: 2.6666666666666665, Avg Time: 0.375s, Avg Bytes: 100\n", stats_prefix(3))
         );
     }
 
@@ -110,9 +117,10 @@ mod tests {
 
         let msg = String::from_utf8(writer.into_inner().unwrap()).unwrap();
 
+        let prefix = stats_prefix(3);
         // inner hashmap can't ensure the order for the moment
-        let expect = vec!["\nSTATS (3s):\n********\nSection: /web, Total Hits: 3, Avg Reqs/Sec: 1, Avg Time: 1s, Avg Bytes: 100\nSection: /api, Total Hits: 5, Avg Reqs/Sec: 1.6666666666666667, Avg Time: 0.6s, Avg Bytes: 100\n", "\nSTATS (3s):\n********\nSection: /api, Total Hits: 5, Avg Reqs/Sec: 1.6666666666666667, Avg Time: 0.6s, Avg Bytes: 100\nSection: /web, Total Hits: 3, Avg Reqs/Sec: 1, Avg Time: 1s, Avg Bytes: 100\n"];
+        let expect = vec![format!("{}Section: /web, Total Hits: 3, Avg Reqs/Sec: 1, Avg Time: 1s, Avg Bytes: 100\nSection: /api, Total Hits: 5, Avg Reqs/Sec: 1.6666666666666667, Avg Time: 0.6s, Avg Bytes: 100\n", prefix), format!("{}Section: /api, Total Hits: 5, Avg Reqs/Sec: 1.6666666666666667, Avg Time: 0.6s, Avg Bytes: 100\nSection: /web, Total Hits: 3, Avg Reqs/Sec: 1, Avg Time: 1s, Avg Bytes: 100\n", prefix)];
 
-        assert!(expect.contains(&msg.as_str()));
+        assert!(expect.contains(&msg));
     }
 }
