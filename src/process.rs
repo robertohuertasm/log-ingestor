@@ -3,17 +3,16 @@ use std::sync::Arc;
 use crate::{
     buffered_logs::BufferedLogs,
     processors::Processor,
-    reader::{read_csv_async, AsyncReader, AsyncWriter},
+    reader::{read_csv_async, AsyncReader},
 };
 use futures::StreamExt;
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 use tracing::instrument;
 
 /// Processes all the logs coming from an async reader
-#[instrument(skip(reader, _writer, processors))]
+#[instrument(skip(reader, processors))]
 pub async fn process_logs<'a>(
     reader: &'a mut AsyncReader,
-    _writer: &'a mut AsyncWriter,
     mut processors: Vec<Box<dyn Processor>>,
 ) -> anyhow::Result<()> {
     // reading and buffering in order to order the logs
@@ -25,7 +24,7 @@ pub async fn process_logs<'a>(
     while let Some(log) = log_stream.next().await {
         let log = Arc::new(log);
         processors.par_iter_mut().for_each(|processor| {
-            if let Err(e) = processor.process(&log.clone()) {
+            if let Err(e) = processor.process(&log.clone(), &mut std::io::stdout()) {
                 tracing::error!("Error processing log: {:?} - {:?}", log, e);
             }
         });

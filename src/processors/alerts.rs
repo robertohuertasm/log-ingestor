@@ -30,8 +30,8 @@ impl Processor for Alerts {
         "Alerts processor"
     }
 
-    #[instrument(skip(self))]
-    fn process(&mut self, log: &HttpLog) -> anyhow::Result<()> {
+    #[instrument(skip(self, writer))]
+    fn process(&mut self, log: &HttpLog, writer: &mut dyn std::io::Write) -> anyhow::Result<()> {
         if self.minor_time == 0 && self.major_time == 0 {
             tracing::debug!("Initial time: {}", log.time);
             self.minor_time = log.time;
@@ -63,16 +63,19 @@ impl Processor for Alerts {
             let is_above_threshold = avg_req_per_sec > self.avg_req_sec_threshold as f64;
             if is_above_threshold && !self.is_alert_set {
                 self.is_alert_set = true;
-                println!(
-                    "High traffic generated an alert - hits = {}, triggered at {}",
+                let msg = format!(
+                    "High traffic generated an alert - hits = {}, triggered at {}\n",
                     avg_req_per_sec, log.time
                 );
+                writer.write_all(msg.as_bytes())?;
             } else if self.is_alert_set && !is_above_threshold {
                 self.is_alert_set = false;
-                println!(
-                    "Normal traffic recovered - hits = {}, recovered at {}",
+                let msg = format!(
+                    "Normal traffic recovered - hits = {}, recovered at {}\n",
                     avg_req_per_sec, log.time,
                 );
+
+                writer.write_all(msg.as_bytes())?;
             }
         }
         Ok(())

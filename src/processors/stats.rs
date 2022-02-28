@@ -12,8 +12,8 @@ impl Processor for Stats {
         "Stats processor"
     }
 
-    #[instrument(skip(self))]
-    fn process(&mut self, log: &HttpLog) -> anyhow::Result<()> {
+    #[instrument(skip(self, writer))]
+    fn process(&mut self, log: &HttpLog, writer: &mut dyn std::io::Write) -> anyhow::Result<()> {
         // println!("Stat processing: {:?}", log);
         Ok(())
     }

@@ -8,5 +8,5 @@ pub use stats::Stats;
 
 pub trait Processor: Sync + Send {
     fn name(&self) -> &'static str;
-    fn process(&mut self, log: &HttpLog) -> anyhow::Result<()>;
+    fn process(&mut self, log: &HttpLog, writer: &mut dyn std::io::Write) -> anyhow::Result<()>;
 }

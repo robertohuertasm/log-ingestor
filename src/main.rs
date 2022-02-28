@@ -39,12 +39,10 @@ async fn main() -> anyhow::Result<()> {
         Box::new(tokio::io::stdin())
     };
 
-    let mut writer = tokio::io::stdout();
-
     let processors: Vec<Box<dyn Processor>> =
         vec![Box::new(Alerts::new(10, 120)), Box::new(Stats {})];
 
-    process::process_logs(&mut reader, &mut writer, processors).await?;
+    process::process_logs(&mut reader, processors).await?;
     Ok(())
 }
 

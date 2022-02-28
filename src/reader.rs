@@ -3,7 +3,7 @@ use tokio_stream::StreamExt;
 use tracing::instrument;
 
 pub type AsyncReader = dyn tokio::io::AsyncRead + Send + Sync + Unpin;
-pub type AsyncWriter = dyn tokio::io::AsyncWrite + Send + Sync + Unpin;
+
 /// Represents a Log Request
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct LogRequest {
