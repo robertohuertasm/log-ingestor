@@ -9,16 +9,18 @@ pub struct Alerts {
     major_time: usize,
     buffer: Vec<HttpLog>,
     is_alert_set: bool,
+    window_size_in_secs: usize,
 }
 
 impl Alerts {
-    pub fn new(avg_req_sec_threshold: usize) -> Self {
+    pub fn new(avg_req_sec_threshold: usize, window_size_in_secs: usize) -> Self {
         Self {
             avg_req_sec_threshold,
             minor_time: 0,
             major_time: 0,
             buffer: Vec::new(),
             is_alert_set: false,
+            window_size_in_secs,
         }
     }
 }
@@ -47,14 +49,14 @@ impl Processor for Alerts {
 
             let diff_time = self.major_time - self.minor_time;
 
-            if diff_time < 120 {
-                return Ok(());
+            if diff_time >= self.window_size_in_secs {
+                // set the minor time to major - 120
+                self.minor_time = self.major_time - self.window_size_in_secs;
+                // draing the logs < minor time
+                self.buffer.retain(|log| log.time >= self.minor_time);
+                // TODO: optimization: use a vecdeque and pop_front until lot time >= minor time
             }
 
-            // set the minor time to major - 120
-            self.minor_time = self.major_time - 120;
-            // draing the logs < minor time
-            self.buffer.retain(|log| log.time >= self.minor_time);
             // calculate the avg requests per 120 secs
             let avg_req_per_sec = self.buffer.len() as f64 / 120.0;
             // check if the avg requests per 120 secs is greater than the threshold

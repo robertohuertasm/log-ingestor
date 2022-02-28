@@ -41,7 +41,8 @@ async fn main() -> anyhow::Result<()> {
 
     let mut writer = tokio::io::stdout();
 
-    let processors: Vec<Box<dyn Processor>> = vec![Box::new(Alerts::new(10)), Box::new(Stats {})];
+    let processors: Vec<Box<dyn Processor>> =
+        vec![Box::new(Alerts::new(10, 120)), Box::new(Stats {})];
 
     process::process_logs(&mut reader, &mut writer, processors).await?;
     Ok(())
