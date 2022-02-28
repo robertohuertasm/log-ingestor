@@ -28,14 +28,6 @@ pub async fn process_logs<'a>(
                 tracing::error!("Error processing log: {:?} - {:?}", log, e);
             }
         });
-
-        // tracing::info!(
-        //     "Processed log: {:?} - {:?}",
-        //     time::OffsetDateTime::from_unix_timestamp(log.time as i64)
-        //         .unwrap()
-        //         .format(&time::format_description::well_known::Rfc3339),
-        //     log
-        // );
     }
     tracing::info!("Processing done!");
     Ok(())
