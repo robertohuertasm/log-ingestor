@@ -110,7 +110,7 @@ One thing that is missing is the ability to handle the logs that were not correc
 
 One of the problems while working on this project is that we're not ingesting the logs in real time, meaning that they are ingested from a file or the standard input fairly quickly.
 
-This means that we cannot use time to unblock or trigger certain events and that's why I chose to naively implemtent the stats processor.
+This means that we cannot use time to unblock or trigger certain events and that's why I chose to naively implement the stats processor.
 
 The idea is that we should be able to get stats every 10 seconds, but check this case:
 
@@ -126,4 +126,4 @@ This works, but it means that you can find stats events that are triggered beyon
 
 We should work on that algorithm to improve the stats processor in this regard. A possible approach would be to calculate the amount of time that has (virtually) passed when receiving the second log and create the events accordingly. For example, in our case, when receiving the log in time 20, we can know that 2 events should be triggered and we could process the logs and split them into two events.
 
-Aside from that, the stats processor doesn't ensure that the stats shown are ordered. Just to be clear, **the stats events will be shown in order** but the staticis of the logs are not. For instance, when receiving a stat event, we will see the amount of hits that each section is receiving. It should be possible that you would see the amount of hits for section `/api` first (with 5 hits) and then the amount of hits for section `/api/user` (with 100 hits). This is just a nice to have as doesn't affect the correctness of the stats.
+Aside from that, the stats processor doesn't ensure that the stats shown are ordered. Just to be clear, **the stats events will be shown in order** but the statistics of the logs are not. For instance, when receiving a stat event, we will see the amount of hits that each section is receiving. It should be possible that you would see the amount of hits for section `/api` first (with 5 hits) and then the amount of hits for section `/api/user` (with 100 hits). This is just a nice to have as doesn't affect the correctness of the stats.
