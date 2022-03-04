@@ -3,12 +3,27 @@ use super::Processor;
 use std::collections::VecDeque;
 use tracing::instrument;
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct LogCounter {
+    time: usize,
+    req_count: usize,
+}
+
+impl From<&GroupedHttpLogs> for LogCounter {
+    fn from(g: &GroupedHttpLogs) -> Self {
+        LogCounter {
+            time: g.time,
+            req_count: g.logs.len(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Alerts {
     avg_req_sec_threshold: usize,
     minor_time: usize,
     major_time: usize,
-    buffer: VecDeque<GroupedHttpLogs>,
+    buffer: VecDeque<LogCounter>,
     is_alert_set: bool,
     window_size_in_secs: usize,
 }
@@ -33,19 +48,21 @@ impl Processor for Alerts {
         log_group: &GroupedHttpLogs,
         writer: &mut dyn std::io::Write,
     ) -> anyhow::Result<()> {
-        self.buffer.push_back(log_group.clone());
+        let log_counter = LogCounter::from(log_group);
+
+        self.buffer.push_back(log_counter.clone());
         if self.minor_time == 0 && self.major_time == 0 {
-            tracing::debug!("Initial time: {}", log_group.time);
-            self.minor_time = log_group.time;
+            tracing::debug!("Initial time: {}", log_counter.time);
+            self.minor_time = log_counter.time;
         }
 
-        if log_group.time < self.minor_time {
+        if log_counter.time < self.minor_time {
             return Err(anyhow::Error::msg(
                     "Log group time is less than the minor time. Try to adjust the BufferedLogs seconds property.",
                 ));
         }
 
-        self.major_time = log_group.time;
+        self.major_time = log_counter.time;
 
         let diff_time = self.major_time - self.minor_time;
 
@@ -53,8 +70,8 @@ impl Processor for Alerts {
             // set the minor time to major - window secs
             self.minor_time = self.major_time - self.window_size_in_secs;
             // draing the log groups < minor time
-            while let Some(log_group) = self.buffer.front() {
-                if log_group.time >= self.minor_time {
+            while let Some(log_counter) = self.buffer.front() {
+                if log_counter.time >= self.minor_time {
                     break;
                 }
                 self.buffer.pop_front();
@@ -65,7 +82,7 @@ impl Processor for Alerts {
         let total_reqs = self
             .buffer
             .iter()
-            .fold(0, |acc, log_group| acc + log_group.logs.len());
+            .fold(0, |acc, log_counter| acc + log_counter.req_count);
 
         let avg_req_per_sec = total_reqs as f64 / self.window_size_in_secs as f64;
 
@@ -78,7 +95,7 @@ impl Processor for Alerts {
                 "{}High traffic generated an alert - hits = {}, triggered at {}\n",
                 alert_prefix(),
                 avg_req_per_sec,
-                log_group.time
+                log_counter.time
             );
             writer.write_all(msg.as_bytes())?;
         } else if self.is_alert_set && !is_above_threshold {
@@ -87,7 +104,7 @@ impl Processor for Alerts {
                 "{}Normal traffic recovered - hits = {}, recovered at {}\n",
                 alert_prefix(),
                 avg_req_per_sec,
-                log_group.time,
+                log_counter.time,
             );
 
             writer.write_all(msg.as_bytes())?;
